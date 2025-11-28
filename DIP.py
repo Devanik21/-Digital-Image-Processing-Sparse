@@ -450,18 +450,50 @@ elif topic == "Laplacian of Gaussian (LoG)":
 
 elif topic == "Frequency Domain Filtering (Notch, Band-pass, Band-stop)":
     st.header("1. Frequency Domain Filtering")
-    st.markdown("""
-    Frequency domain filtering is a powerful technique where we modify the Fourier Transform of an image to achieve filtering effects. The core process is:
-    1.  Compute the 2D Discrete Fourier Transform (DFT) of the input image.
-    2.  Shift the zero-frequency component to the center for easier visualization and filter design.
-    3.  Create a filter mask `H(u, v)` of the same size as the image.
-    4.  Multiply the shifted DFT pointwise with the filter mask: `G(u, v) = F(u, v) * H(u, v)`.
-    5.  Shift the result back.
-    6.  Compute the Inverse DFT to get the filtered image back in the spatial domain.
+    st.markdown(r"""
+    ### The Foundation: The 2D Discrete Fourier Transform (DFT)
+    At the heart of frequency domain processing is the **2D Discrete Fourier Transform (DFT)**. Any image, which we view in the spatial domain `f(x, y)`, can be decomposed into a sum of complex sinusoids of varying frequencies, magnitudes, and phases. The DFT, `F(u, v)`, is this representation.
 
-    Low frequencies correspond to the general, smooth areas of an image, while high frequencies correspond to details, edges, and noise.
+    -   **`f(x, y)`**: The image in the spatial domain, a matrix of pixel intensity values.
+    -   **`F(u, v)`**: The image in the frequency domain. `u` and `v` are the frequency variables, representing spatial frequencies in the x and y directions, respectively.
+
+    The value of `F(u, v)` at any point `(u, v)` is a complex number containing both a magnitude and a phase:
+    -   **Magnitude `|F(u, v)|`**: This is the **Magnitude Spectrum**. It tells us the "amount" or "energy" of that specific frequency `(u, v)` present in the image. Bright spots in the magnitude spectrum indicate dominant frequencies. The value at `F(0, 0)` corresponds to the average brightness of the entire image (the DC component).
+    -   **Phase `∠F(u, v)`**: This is the **Phase Spectrum**. It contains the crucial information about where the features are located in the image. While the magnitude tells us *what* frequencies exist, the phase tells us *how* to combine them to reconstruct the original image structure. The phase spectrum is critically important; if you were to reconstruct an image using its original phase spectrum but a constant magnitude spectrum, you would still see the outlines and structure of the original image.
+
+    ### The Convolution Theorem: The Key to Efficiency
+    The most important principle enabling frequency domain filtering is the **Convolution Theorem**. It states that the computationally expensive process of **convolution** in the spatial domain is equivalent to a simple, element-wise **multiplication** in the frequency domain.
+
+    -   **Spatial Domain:** `g(x, y) = f(x, y) * h(x, y)` (Convolution)
+    -   **Frequency Domain:** `G(u, v) = F(u, v) × H(u, v)` (Element-wise Multiplication)
+
+    Here, `h(x, y)` is the spatial filter kernel, and `H(u, v)` is its Fourier transform, known as the **filter transfer function**. This is a massive advantage. A large `M x N` filter kernel requires `M x N` multiplications and additions for *every single pixel* in the image. In the frequency domain, after the initial cost of computing the DFTs, the filtering step is just a single multiplication for each frequency component.
+
+    The complete process is therefore:
+    1.  Given an input image `f(x, y)`, compute its DFT, `F(u, v)`.
+    2.  Design a filter transfer function `H(u, v)`.
+    3.  Multiply them: `G(u, v) = F(u, v) × H(u, v)`.
+    4.  Compute the Inverse DFT of `G(u, v)` to get the filtered image `g(x, y)`.
+
+    ### Filter Design Principles: Ideal, Butterworth, and Gaussian
+    The art of frequency domain filtering lies in designing the mask `H(u, v)`. We can classify filters based on how sharply they transition from passing frequencies (value of 1) to rejecting them (value of 0).
+
+    1.  **Ideal Filters:** These have an infinitely sharp "brick wall" transition. For a band-reject filter, the mask is 1 everywhere except in the reject band, where it is abruptly 0.
+        -   **Advantage:** Simple to define.
+        -   **Major Disadvantage:** The sharp cutoff in the frequency domain is equivalent to convolving with a `sinc` function in the spatial domain. This causes severe **ringing artifacts** (Gibbs phenomenon) in the output image, which often look like echoes or ripples around sharp edges. They are rarely used in practice for this reason.
+
+    2.  **Butterworth Filters:** These provide a smooth, monotonic transition between the passband and stopband. The sharpness of this transition is controlled by a parameter called the **filter order (n)**.
+        -   **Order `n=1`**: Very smooth, gradual transition.
+        -   **Higher `n` (e.g., `n=5, 10`)**: The transition becomes steeper, approaching an ideal filter.
+        -   **Advantage:** They are a great compromise, offering a reasonably sharp cutoff without the severe ringing artifacts of ideal filters. Some minor ringing may still be present at high orders.
+
+    3.  **Gaussian Filters:** These use a Gaussian function for the transition.
+        -   **Advantage:** The Fourier transform of a Gaussian is another Gaussian. This unique property means there are **absolutely no ringing artifacts**. The transition is the smoothest possible.
+        -   **Disadvantage:** The transition is very gradual, meaning it may attenuate frequencies in the passband or fail to fully reject frequencies in the stopband near the cutoff boundary.
+
+    ---
+    **Summary of the Core Idea:** Frequency domain filtering is a powerful technique where we modify the Fourier Transform of an image to achieve filtering effects. Low frequencies correspond to the general, smooth areas of an image, while high frequencies correspond to details, edges, and noise. By designing a filter mask `H(u,v)`, we can selectively suppress or enhance these frequency components.
     """)
-
     col1, col2 = st.columns(2)
     with col1:
         st.image(gray_img, caption="Original Grayscale Image", use_column_width=True)
@@ -481,9 +513,19 @@ elif topic == "Frequency Domain Filtering (Notch, Band-pass, Band-stop)":
     
     if filter_type == "Notch Filter":
         st.markdown("""
-        **Notch Filter:** A notch filter rejects (sets to zero) frequencies in a specific, small region of the frequency domain. It is primarily used to remove periodic noise, which appears as bright spots (spikes) in the magnitude spectrum.
-        - **Action:** Attenuates a predefined neighborhood around a specific frequency location.
-        - **Use Case:** Removing sinusoidal noise, moiré patterns, or interference from a power line (e.g., 60 Hz hum).
+        ### In-Depth: The Notch Filter
+        A **Notch Filter** is a highly specialized band-reject filter designed to eliminate a very narrow band of frequencies. Its primary application is the removal of **periodic noise**.
+
+        **How Periodic Noise Appears:** Periodic noise, such as that from electrical interference (e.g., a 60 Hz hum) or sensor artifacts, manifests in the frequency domain as a pair of bright, symmetric spikes (impulses) located at `(u₀, v₀)` and `(-u₀, -v₀)`. These spikes represent the specific frequency of the periodic interference.
+
+        **The Filtering Strategy:** The goal of a notch filter is to "notch out" these specific spikes, effectively setting the magnitude at and around these locations to zero while leaving the rest of the frequency spectrum untouched.
+
+        A notch-reject filter `H(u, v)` is constructed by multiplying individual high-pass filters whose centers have been shifted to the locations of the noise spikes. For a pair of spikes at `(u₀, v₀)` and `(-u₀, -v₀)`, the transfer function is:
+        $H(u, v) = H_1(u, v) \times H_2(u, v)$
+        where $H_1$ is a high-pass filter centered at `(u₀, v₀)` and $H_2$ is a high-pass filter centered at `(-u₀, -v₀)`.
+
+        - **Action:** Attenuates a predefined neighborhood around a specific frequency location and its symmetric counterpart.
+        - **Use Case:** Removing sinusoidal noise, moiré patterns, or interference from a power line. It is a surgical tool for noise that is concentrated at specific frequencies.
         """)
         st.info("Interactive Demo: We will simulate removing periodic noise by placing notches.")
         
@@ -499,9 +541,16 @@ elif topic == "Frequency Domain Filtering (Notch, Band-pass, Band-stop)":
         
     elif filter_type == "Band-stop Filter":
         st.markdown("""
-        **Band-stop Filter (or Band-reject):** This filter attenuates frequencies within a certain range (a band) from the center of the spectrum. It's like a more general version of a low-pass or high-pass filter.
-        - **Action:** Passes low and high frequencies but rejects frequencies in a ring-shaped band.
-        - **Use Case:** Removing specific frequency-band noise while preserving the very low and very high frequencies.
+        ### In-Depth: The Band-stop Filter
+        A **Band-stop Filter** (also known as a Band-reject filter) attenuates frequencies within a specific range or "band" around the origin. It is defined by a cutoff frequency `D₀` (the center of the band) and a bandwidth `W`. It rejects all frequencies in the range `[D₀ - W/2, D₀ + W/2]`.
+
+        **Mathematical Formulation (Butterworth Example):**
+        A Butterworth Band-reject Filter of order `n` is given by:
+        $H(u, v) = \frac{1}{1 + \left[ \frac{D(u, v)W}{D^2(u, v) - D_0^2} \right]^{2n}}$
+        where $D(u, v) = \sqrt{(u - M/2)^2 + (v - N/2)^2}$ is the distance from the center.
+
+        - **Action:** Passes frequencies that are very low (close to the DC component) and very high, but rejects a ring-shaped band of mid-range frequencies.
+        - **Use Case:** This is useful for removing specific types of noise that are not just single spikes but occupy a known frequency band. For example, if a mechanical vibration introduces noise within a certain frequency range, a band-stop filter can be designed to eliminate it while preserving the overall image structure (low frequencies) and fine details (high frequencies).
         """)
         st.info("Interactive Demo: We will create a ring that blocks a band of frequencies.")
         
@@ -516,9 +565,14 @@ elif topic == "Frequency Domain Filtering (Notch, Band-pass, Band-stop)":
 
     elif filter_type == "Band-pass Filter":
         st.markdown("""
-        **Band-pass Filter:** This is the opposite of a band-stop filter. It passes frequencies within a certain band and rejects all others (both low and high).
-        - **Action:** Rejects low and high frequencies but passes frequencies in a ring-shaped band.
-        - **Use Case:** Isolating features of a specific size or texture, as different textures often correspond to specific frequency bands.
+        ### In-Depth: The Band-pass Filter
+        A **Band-pass Filter** is the inverse of a band-stop filter. It passes frequencies within a certain band `[D₀ - W/2, D₀ + W/2]` and rejects all others.
+
+        **Relationship to other filters:** A band-pass filter can be created by subtracting a band-reject filter from a constant value of 1:
+        $H_{bp}(u, v) = 1 - H_{br}(u, v)$
+
+        - **Action:** Rejects the very low frequencies (overall illumination) and the very high frequencies (fine noise, sharpest edges), allowing only a specific band of mid-range frequencies to pass.
+        - **Use Case:** This is extremely useful for **feature and texture analysis**. Different textures in an image are often characterized by their energy being concentrated in a specific frequency band. By applying a band-pass filter, one can isolate and highlight all areas in an image that have a particular texture. For example, it could be used to find all regions of "sandy" texture or "fabric" texture in an image. It is also used in medical imaging to isolate features of a particular size, like cells or lesions.
         """)
         st.info("Interactive Demo: We will create a ring that allows a band of frequencies to pass.")
         
@@ -557,37 +611,75 @@ elif topic == "Frequency Domain Filtering (Notch, Band-pass, Band-stop)":
 
 elif topic == "Pattern Recognition by Minimum Distance Classifier":
     st.header("2. Pattern Recognition by Minimum Distance Classifier")
-    st.markdown("""
-    The Minimum Distance Classifier is one of the simplest yet most fundamental classifiers in pattern recognition. It classifies an unknown pattern (represented by a feature vector) into a class based on the distance to the mean (or prototype) of each class.
+    st.markdown(r"""
+    ### Introduction: The Concept of a Classifier
+    Pattern recognition is the process of training a machine to recognize patterns and make decisions. A **classifier** is an algorithm that takes an input object, represented by a set of features, and assigns it to one of a predefined set of categories or **classes**. The Minimum Distance Classifier is a foundational example of a **supervised learning** algorithm, meaning it learns from a set of labeled training data.
 
-    **Core Idea:**
-    1.  **Training Phase:** For each class, we compute a "prototype" vector, which is typically the mean of all training samples belonging to that class.
-    2.  **Classification Phase:** For a new, unknown sample, we compute its feature vector. Then, we calculate the distance from this new vector to the prototype vector of each class.
-    3.  **Decision:** The new sample is assigned to the class whose prototype is closest (i.e., has the minimum distance).
+    ### Feature Vectors and Feature Space
+    Before classification, we must represent our objects of interest in a quantitative way. This is done by extracting a set of `d` descriptive measurements, known as **features**. These `d` features form a **feature vector**, `x`, which can be viewed as a single point in a `d`-dimensional **feature space**.
 
-    The "distance" is usually the **Euclidean distance**.
+    For example, to classify different types of fruit, our features might be:
+    - `x₁`: Color (e.g., average red value)
+    - `x₂`: Texture (e.g., a measure of roughness)
+    - `x₃`: Shape (e.g., eccentricity)
+    A specific apple might be represented by the feature vector `x_apple = [200, 0.1, 0.9]`. The goal of the classifier is to partition this feature space into regions, where each region corresponds to a different class (e.g., "apple region", "banana region").
+
+    ### The Minimum Distance Classifier: A Prototype-Based Approach
+    The Minimum Distance Classifier is one of the simplest yet most intuitive classifiers. It operates on the principle that a pattern is more likely to belong to a class if it is "closer" to that class's central tendency.
+
+    **1. Training Phase: Learning the Prototypes**
+    The "training" phase for this classifier is straightforward. For each class `ωⱼ` (where `j = 1, 2, ..., M`), we take all the available labeled training samples and compute a single representative point, called a **prototype**. The most common choice for a prototype is the **mean vector** (or centroid) of the class, `mⱼ`.
     """)
-
     st.subheader("Mathematical Formulation")
     st.markdown(r"""
     Let's say we have `M` classes, $\omega_1, \omega_2, \dots, \omega_M$.
     The mean (prototype) vector for each class $\omega_j$ is $\mathbf{m}_j$:
     """)
     st.latex(r'''
-    \mathbf{m}_j = \frac{1}{N_j} \sum_{\mathbf{x} \in \omega_j} \mathbf{x}
+    \mathbf{m}_j = \frac{1}{N_j} \sum_{\mathbf{x} \in \omega_j} \mathbf{x} \quad \text{for } j=1, 2, \dots, M
     ''')
     st.markdown(r"""
     Where $N_j$ is the number of training vectors in class $\omega_j$.
 
-    To classify an unknown vector $\mathbf{x}$, we compute the Euclidean distance $D_j(\mathbf{x})$ to each mean vector $\mathbf{m}_j$:
+    **2. Classification Phase: Measuring Distance**
+    To classify a new, unknown feature vector $\mathbf{x}$, we compute the distance from $\mathbf{x}$ to each of the `M` class prototypes. The most common distance metric is the **Euclidean distance**, $D_j(\mathbf{x})$:
     """)
     st.latex(r'''
     D_j(\mathbf{x}) = \| \mathbf{x} - \mathbf{m}_j \| = \sqrt{(\mathbf{x} - \mathbf{m}_j)^T (\mathbf{x} - \mathbf{m}_j)}
     ''')
     st.markdown(r"""
-    The decision rule is: Assign $\mathbf{x}$ to class $\omega_i$ if $D_i(\mathbf{x}) < D_j(\mathbf{x})$ for all $j \neq i$.
+    **3. The Decision Rule**
+    The classifier then applies a simple decision rule: **Assign $\mathbf{x}$ to class $\omega_i$ if its distance to the prototype $\mathbf{m}_i$ is the smallest among all classes.**
     
-    This creates linear decision boundaries between classes.
+    Assign $\mathbf{x}$ to $\omega_i$ if $D_i(\mathbf{x}) < D_j(\mathbf{x})$ for all $j \neq i$.
+
+    ### Decision Boundaries
+    The decision boundary between any two classes, $\omega_i$ and $\omega_j$, is the set of points $\mathbf{x}$ that are equidistant from their respective prototypes:
+    $D_i(\mathbf{x}) = D_j(\mathbf{x})$
+    
+    If we square both sides (which doesn't change the boundary location) and expand the terms, we get:
+    $(\mathbf{x} - \mathbf{m}_i)^T (\mathbf{x} - \mathbf{m}_i) = (\mathbf{x} - \mathbf{m}_j)^T (\mathbf{x} - \mathbf{m}_j)$
+    $\mathbf{x}^T\mathbf{x} - 2\mathbf{m}_i^T\mathbf{x} + \mathbf{m}_i^T\mathbf{m}_i = \mathbf{x}^T\mathbf{x} - 2\mathbf{m}_j^T\mathbf{x} + \mathbf{m}_j^T\mathbf{m}_j$
+
+    The $\mathbf{x}^T\mathbf{x}$ terms cancel, and we are left with a linear equation in $\mathbf{x}$:
+    $2(\mathbf{m}_j - \mathbf{m}_i)^T\mathbf{x} + (\mathbf{m}_i^T\mathbf{m}_i - \mathbf{m}_j^T\mathbf{m}_j) = 0$
+
+    This equation defines a **hyperplane**. Specifically, it is the perpendicular bisector of the line segment connecting $\mathbf{m}_i$ and $\mathbf{m}_j$. This is a crucial property: **The Minimum Distance Classifier produces linear decision boundaries.**
+
+    ### Advantages and Disadvantages
+
+    **Advantages:**
+    -   **Simplicity:** It is extremely easy to implement and computationally very fast, both in training (just calculating means) and classification (calculating distances).
+    -   **Guaranteed Performance (under ideal conditions):** If the classes are "well-behaved" (i.e., they are linearly separable and their distributions are compact and roughly spherical), this classifier can perform very well.
+
+    **Disadvantages:**
+    -   **Sensitivity to Class Distribution:** Its biggest weakness is that it only considers the mean of each class and completely ignores the variance and shape.
+        -   If a class is very elongated or spread out in one direction, its mean might be a poor representation of the class as a whole.
+        -   If one class has a much larger variance than another, the decision boundary can be placed in a suboptimal location. For example, a point might be closer to the mean of a compact class `A` but intuitively belong to a widespread class `B` that surrounds it.
+    -   **Linear Boundaries Only:** It cannot handle cases where the optimal decision boundary is non-linear (e.g., curved or circular).
+    -   **Sensitivity to Outliers:** The calculation of the mean is sensitive to outliers in the training data, which can pull the prototype away from the true center of the class.
+
+    For these reasons, the Minimum Distance Classifier is often used as a baseline for comparison or in applications where speed is paramount and the classes are known to be well-separated. More advanced classifiers like the **Bayes classifier** (which considers class variance) or **Support Vector Machines** (which can create non-linear boundaries) are often required for more complex problems.
     """)
 
     st.subheader("Interactive Demo: Classifying Pixels by Color")
@@ -646,8 +738,11 @@ elif topic == "Pattern Recognition by Minimum Distance Classifier":
 
 elif topic == "Geometric Mean Filter in Frequency Domain":
     st.header("3. Geometric Mean Filter in Frequency Domain")
-    st.markdown("""
-    The Geometric Mean filter is a non-linear spatial filter that is effective at removing Gaussian noise while preserving edges better than the Arithmetic Mean filter. Its spatial domain formula is:
+    st.markdown(r"""
+    ### The Geometric Mean Filter in the Spatial Domain
+    First, let's understand the Geometric Mean filter in its native spatial domain. Unlike the Arithmetic Mean filter, which simply averages pixel values, the Geometric Mean filter computes the product of the pixel values within a neighborhood window and raises the result to the power of `1/mn`, where `mn` is the number of pixels in the window.
+
+    Its spatial domain formula is:
     """)
     st.latex(r'''
     \hat{f}(x, y) = \left[ \prod_{(s, t) \in S_{xy}} g(s, t) \right]^{\frac{1}{mn}}
@@ -655,9 +750,23 @@ elif topic == "Geometric Mean Filter in Frequency Domain":
     st.markdown(r"""
     Where $S_{xy}$ is the neighborhood of size $m \times n$ centered at $(x, y)$, and $g(s, t)$ are the pixel values in that neighborhood.
 
-    **Challenge:** The product operation ($\prod$) is computationally intensive. Can we implement this in the frequency domain?
+    **Key Properties:**
+    -   **Noise Removal:** It is particularly effective for removing **Gaussian noise**.
+    -   **Detail Preservation:** It achieves smoothing comparable to the arithmetic mean filter but tends to preserve image details and edges better. An arithmetic mean filter can be heavily skewed by a single very high or very low pixel value, leading to more blurring. The geometric mean is less sensitive to such extreme values.
+    -   **Non-Linearity:** The product operation makes this a non-linear filter.
 
-    **Yes, by using logarithms.** The logarithm of a product is the sum of logarithms:
+    ### The Challenge and the Logarithmic Bridge
+    The Convolution Theorem, which is the foundation of frequency domain filtering, only applies to **linear, position-invariant** operations. The Geometric Mean filter, with its product operation, is non-linear. Therefore, we cannot directly create a filter transfer function `H(u, v)` that performs the geometric mean.
+
+    The key insight is to transform this non-linear problem into a linear one using **logarithms**. The fundamental property of logarithms is that they turn multiplication into addition: `log(a * b) = log(a) + log(b)`.
+
+    Let's apply the natural logarithm to the geometric mean filter equation:
+    """)
+    st.latex(r'''
+    \log[\hat{f}(x, y)] = \frac{1}{mn} \sum_{(s, t) \in S_{xy}} \log[g(s, t)]
+    ''')
+    st.markdown("""
+    Using logarithm properties, we can bring the exponent down and convert the product to a summation:
     """)
     st.latex(r'''
     \log[\hat{f}(x, y)] = \frac{1}{mn} \sum_{(s, t) \in S_{xy}} \log[g(s, t)]
@@ -666,15 +775,17 @@ elif topic == "Geometric Mean Filter in Frequency Domain":
     This equation is now a convolution! The term on the right is simply the **arithmetic mean** of the **logarithm of the image**. We can perform arithmetic mean filtering (which is a convolution with a box kernel) in the frequency domain.
 
     ### The Frequency Domain Process
-    1.  **Log Transform:** Take the natural logarithm of the input image `g(x, y)`. Let's call this `L(x, y) = log[g(x, y)]`. (We must add 1 to the image to avoid `log(0)`).
-    2.  **Frequency Domain Convolution:**
-        a. Compute the DFT of `L(x, y)`.
-        b. Create a frequency-domain representation of the arithmetic mean filter (which is a low-pass filter, e.g., a Butterworth or Gaussian LPF).
-        c. Multiply the DFT of `L` with the filter.
-    3.  **Inverse DFT:** Compute the inverse DFT of the result to get the smoothed log image, `L_smooth(x, y)`.
-    4.  **Exponentiation:** Take the exponent of the result to reverse the initial log transform: `f_hat(x, y) = exp[L_smooth(x, y)]`.
+    This insight gives us a multi-step algorithm to implement a geometric mean filter using frequency domain tools:
 
-    This complex process achieves the geometric mean filtering effect using the efficiency of frequency domain convolution.
+    1.  **Log Transform:** Take the natural logarithm of the input image `g(x, y)`. Since pixel values can be 0, and `log(0)` is undefined, we compute `L(x, y) = log[1 + g(x, y)]`.
+    2.  **Frequency Domain Convolution:**
+        a. Compute the DFT of the log-transformed image, `L(x, y)`, to get `F_L(u, v)`.
+        b. Create the transfer function `H(u, v)` for an arithmetic mean filter. This is simply a **low-pass filter**. We can use an Ideal, Butterworth, or Gaussian low-pass filter for this purpose. A Gaussian LPF is often a good choice as it avoids ringing artifacts.
+        c. Multiply the two in the frequency domain: `G_L(u, v) = F_L(u, v) × H(u, v)`.
+    3.  **Inverse DFT:** Compute the inverse DFT of `G_L(u, v)` to get the smoothed log-transformed image, `l_smooth(x, y)`.
+    4.  **Inverse Log Transform (Exponentiation):** To get the final filtered image, we must reverse the initial log transform. This is done by taking the exponent: `f_hat(x, y) = exp[l_smooth(x, y)] - 1`.
+
+    This sequence of operations is an example of **homomorphic filtering**, where a non-linear operation is made linear by transforming the image into a different domain (in this case, the log domain), performing linear filtering, and then transforming back.
     """)
 
     st.subheader("Interactive Demo")
