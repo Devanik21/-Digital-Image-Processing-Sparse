@@ -466,8 +466,9 @@ elif topic == "Frequency Domain Filtering (Notch, Band-pass, Band-stop)":
     with col1:
         st.image(gray_img, caption="Original Grayscale Image", use_column_width=True)
     with col2:
-        magnitude_spectrum = create_frequency_domain_image(gray_img)
-        st.image(magnitude_spectrum, caption="Magnitude Spectrum (Frequency Domain)", use_column_width=True)
+        magnitude_spectrum_raw = create_frequency_domain_image(gray_img)
+        magnitude_spectrum_display = cv2.normalize(magnitude_spectrum_raw, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+        st.image(magnitude_spectrum_display, caption="Magnitude Spectrum (Frequency Domain)", use_column_width=True)
 
     st.subheader("Filter Types")
     filter_type = st.radio("Select Filter Type to Apply:", ("Notch Filter", "Band-stop Filter", "Band-pass Filter"))
