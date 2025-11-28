@@ -99,11 +99,18 @@ gray_img = get_grayscale_image(img_array)
 if topic == "Adaptive Mean Filtering":
     st.header("1. Adaptive Mean Filtering for Local Noise Reduction")
     st.markdown("""
-    Adaptive Mean Filtering is a sophisticated spatial filtering technique that performs better than a standard mean filter. Unlike the standard mean filter which operates uniformly across the entire image, the adaptive filter changes its behavior based on the statistical characteristics of the local neighborhood of each pixel.
+    ### Introduction: The Limitations of Standard Mean Filtering
+    Before diving into the adaptive mean filter, it's crucial to understand why it was developed. The standard **Arithmetic Mean Filter** is a simple and intuitive method for noise reduction. It operates by replacing the value of each pixel with the average value of its neighbors within a defined kernel (e.g., a 3x3 or 5x5 window). While effective at smoothing out random noise like Gaussian noise, it has a significant drawback: **it blurs the entire image indiscriminately.**
 
-    **Core Idea:** The filter's action depends on whether the local variance is high or low compared to the overall noise variance.
-    - If the local variance is low (similar to noise variance), it means the area is relatively flat. The filter performs strong smoothing, similar to a mean filter.
-    - If the local variance is high, it suggests the presence of edges or details. The filter performs less smoothing to preserve these features.
+    This uniform blurring occurs because the mean filter does not distinguish between noise and important image features like edges, lines, or fine textures. When the filter's kernel passes over an edge, it averages the high-intensity values on one side of the edge with the low-intensity values on the other, resulting in a smeared, less-defined edge. For many applications, especially in medical imaging or object recognition, preserving these details is paramount.
+
+    ### The Adaptive Approach: Intelligence in Filtering
+    **Adaptive Mean Filtering** is a more sophisticated spatial filtering technique designed to overcome this limitation. The key word here is "adaptive." Unlike the standard mean filter, which applies the same logic across the entire image, the adaptive filter **changes its behavior based on the statistical characteristics of the local neighborhood of each pixel.**
+
+    **Core Idea:** The filter's action is governed by a comparison between the local image statistics within a sliding window and the overall noise characteristics of the image. Specifically, it analyzes the **local mean ($\mu_L$)** and **local variance ($\sigma_L^2$)** against the **global noise variance ($\sigma_\eta^2$)**.
+
+    -   **In flat, noisy areas:** The local variance will be low and roughly equal to the noise variance. In this case, the filter concludes it's looking at a region of pure noise and applies strong smoothing by replacing the pixel with the local mean.
+    -   **In areas with details (edges, lines):** The local variance will be high, significantly greater than the noise variance. The filter recognizes this as a region containing important image features and applies minimal or no smoothing, thereby preserving the original pixel value and keeping the edge sharp.
     """)
 
     st.subheader("Mathematical Formulation")
@@ -111,17 +118,46 @@ if topic == "Adaptive Mean Filtering":
     \hat{f}(x, y) = g(x, y) - \frac{\sigma_\eta^2}{\sigma_L^2} \left( g(x, y) - \mu_L \right)
     ''')
     st.markdown(r"""
-    Where:
-    - $\hat{f}(x, y)$ is the estimated (filtered) pixel value at `(x, y)`.
-    - $g(x, y)$ is the original (noisy) pixel value at `(x, y)`.
-    - $\sigma_\eta^2$ is the variance of the noise in the entire image. This is often estimated beforehand.
-    - $\mu_L$ is the local mean in a neighborhood `S_xy` around `(x, y)`.
-    - $\sigma_L^2$ is the local variance in the neighborhood `S_xy`.
+    Let's break down each component of this powerful equation:
 
-    **Two main cases arise from this equation:**
-    1.  **If $\sigma_\eta^2$ is zero (no noise):** The fraction becomes zero, and $\hat{f}(x, y) = g(x, y)$. The filter does nothing, preserving the original image.
-    2.  **If $\sigma_L^2 \approx \sigma_\eta^2$:** The fraction is close to 1, so $\hat{f}(x, y) \approx \mu_L$. This is strong smoothing, as seen in a standard mean filter.
-    3.  **If $\sigma_L^2 \gg \sigma_\eta^2$:** The fraction is close to 0, so $\hat{f}(x, y) \approx g(x, y)$. This preserves edges and details where local variance is high.
+    -   **$\hat{f}(x, y)$**: This is the **output**, the new, filtered pixel value at coordinates `(x, y)`.
+    -   **$g(x, y)$**: This is the **input**, the original (noisy) pixel value at `(x, y)`.
+    -   **$\sigma_\eta^2$**: This is the **global noise variance** for the entire image. It represents the overall level of noise we expect. A critical point is that this value is often *unknown* and must be estimated. A common method is to select a small, relatively flat patch of the image and calculate its variance, assuming that any variation in that patch is due to noise.
+    -   **$\mu_L$**: This is the **local mean** calculated within a neighborhood window `S_xy` (e.g., 5x5) centered on the pixel `(x, y)`. It's the average pixel value in that window.
+    -   **$\sigma_L^2$**: This is the **local variance** within the same neighborhood `S_xy`. It measures how much the pixel values within the window vary from the local mean. A high local variance indicates the presence of edges or texture, while a low local variance indicates a flat region.
+
+    ### Deep Dive into the Filter's Behavior
+
+    The behavior of the filter is dictated by the ratio $\frac{\sigma_\eta^2}{\sigma_L^2}$. Let's analyze the three key scenarios that arise from this equation:
+
+    1.  **Case 1: Noiseless Image ($\sigma_\eta^2 = 0$)**
+        If the global noise variance is zero, it implies the image is perfectly clean. The ratio $\frac{0}{\sigma_L^2}$ becomes 0. The equation simplifies to:
+        $\hat{f}(x, y) = g(x, y) - 0 \cdot (g(x, y) - \mu_L) = g(x, y)$.
+        **Result:** The filter returns the original pixel value. This is the desired behavior; a good filter should not alter a clean image.
+
+    2.  **Case 2: High Local Variance ($\sigma_L^2 \gg \sigma_\eta^2$)**
+        This occurs when the filter window is over an edge or a highly textured area. The local variation is dominated by the image content, not the noise. In this case, the ratio $\frac{\sigma_\eta^2}{\sigma_L^2}$ approaches 0. The equation again simplifies to:
+        $\hat{f}(x, y) \approx g(x, y)$.
+        **Result:** The filter returns a value very close to the original pixel value. This is the "edge-preserving" property. The filter intelligently recognizes the detail and avoids blurring it.
+
+    3.  **Case 3: Low Local Variance ($\sigma_L^2 \approx \sigma_\eta^2$)**
+        This happens when the filter window is over a flat, uniform region where the only variations are due to noise. The local variance is similar to the global noise variance. The ratio $\frac{\sigma_\eta^2}{\sigma_L^2}$ is approximately 1. The equation becomes:
+        $\hat{f}(x, y) \approx g(x, y) - 1 \cdot (g(x, y) - \mu_L) = g(x, y) - g(x, y) + \mu_L = \mu_L$.
+        **Result:** The filter returns the local mean. This is equivalent to the action of a standard arithmetic mean filter, providing strong smoothing to eliminate the noise in the flat region.
+
+    A final consideration is when $\sigma_L^2 < \sigma_\eta^2$. To prevent instability and over-subtraction, the implementation ensures that the ratio $\frac{\sigma_\eta^2}{\sigma_L^2}$ does not exceed 1 by setting $\sigma_L^2 = \max(\sigma_L^2, \sigma_\eta^2)$.
+
+    ### Advantages and Disadvantages
+
+    **Advantages:**
+    -   **Superior Edge Preservation:** Its primary advantage over the standard mean filter is its ability to smooth noise without significantly blurring important image details.
+    -   **Effective for Additive Noise:** It performs particularly well for removing additive Gaussian noise.
+    -   **Conceptually Sound:** The logic is based on local statistics, making it an intuitive and powerful approach.
+
+    **Disadvantages:**
+    -   **Dependence on Noise Estimation:** The filter's performance is highly dependent on an accurate estimate of the global noise variance ($\sigma_\eta^2$). An incorrect estimate can lead to either insufficient smoothing or excessive blurring.
+    -   **Computational Cost:** It is more computationally expensive than a simple mean filter because it requires calculating both the local mean and local variance for every pixel in the image.
+    -   **Ineffective for Impulsive Noise:** It is not the best choice for removing "salt-and-pepper" (impulsive) noise. The extreme values of salt (255) and pepper (0) can heavily skew the local mean and variance calculations. For such noise, a **median filter** is generally superior.
     """)
 
     st.subheader("Interactive Demo")
@@ -155,7 +191,7 @@ if topic == "Adaptive Mean Filtering":
     st.success("**Key Takeaway:** Adaptive mean filtering is superior to standard mean filtering because it preserves edges while smoothing noise, by adapting its behavior to local image statistics.")
 
 elif topic == "Hit-or-Miss Transformation":
-    st.header("2. Hit-or-Miss Transformation for Shape Detection")
+    st.header("2. Hit-or-Miss Transformation for Precise Shape Detection")
     st.markdown("""
     The Hit-or-Miss Transform is a fundamental morphological operation used for finding specific patterns (shapes) in a binary image. It's a powerful tool for shape detection and is the basis for other advanced morphological algorithms like thinning and pruning.
 
@@ -183,7 +219,7 @@ elif topic == "Hit-or-Miss Transformation":
     st.markdown("Let's try to find corners in the image. We'll use a structuring element that looks for a specific corner shape.")
 
     # Binarize the image for morphological operations
-    _, binary_img = cv2.threshold(gray_img, 127, 255, cv2.THRESH_BINARY)
+    _, binary_img = cv2.threshold(gray_img, 127, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
 
     col1, col2 = st.columns(2)
     with col1:
@@ -191,24 +227,76 @@ elif topic == "Hit-or-Miss Transformation":
 
     with col2:
         # Define a structuring element to find top-left corners
-        hit_kernel = np.array([[0, 1, 1],
-                               [0, 1, 0],
-                               [0, 0, 0]], dtype=np.uint8)
-        miss_kernel = np.array([[0, 0, 0],
-                                [1, 0, 0],
-                                [1, 1, 0]], dtype=np.uint8)
+        st.markdown("""
+        **Defining the Structuring Element (SE):**
+        To find a specific shape, we need a composite SE. In OpenCV, this is a single kernel where:
+        - **`1`** represents a "Hit" pixel (must be part of the foreground).
+        - **`-1`** represents a "Miss" pixel (must be part of the background).
+        - **`0`** represents a "Don't Care" pixel.
         
-        # In OpenCV, the hit-or-miss kernel is combined. 1 for hit, -1 for miss, 0 for don't care.
-        combined_kernel = np.array([[0, 1, 1],
-                                    [-1, 1, 0],
-                                    [-1, -1, 0]], dtype=np.int8)
+        Let's design a kernel to find **top-right corners**:
+        ```
+        [[ -1, -1,  0 ],   // Background, Background, Don't Care
+         [  1,  1,  0 ],   // Foreground, Foreground, Don't Care
+         [ -1,  1,  0 ]]   // Background, Foreground, Don't Care
+        ```
+        This kernel looks for a pattern where there's a horizontal foreground line with a pixel below it, and background pixels to the top-left and bottom-left.
+        """)
+
+        kernel_choice = st.selectbox(
+            "Select the shape to detect:",
+            ("Top-Right Corner", "Bottom-Left Corner", "Isolated Pixel", "Line Ending (Right)")
+        )
+
+        if kernel_choice == "Top-Right Corner":
+            # This kernel is designed to find corners like the top-right of a square.
+            # It requires background pixels (-1) to the top and left of the corner,
+            # and foreground pixels (1) forming the corner itself.
+            combined_kernel = np.array([
+                [-1, 1, 0],
+                [-1, 1, 1],
+                [-1, 1, 0]], dtype=np.int8)
+            caption_text = "Hit-or-Miss: Detecting Top-Right Corners"
+        elif kernel_choice == "Bottom-Left Corner":
+            # The inverse of the top-right corner.
+            combined_kernel = np.array([
+                [0, 1, -1],
+                [1, 1, -1],
+                [0, 1, -1]], dtype=np.int8)
+            caption_text = "Hit-or-Miss: Detecting Bottom-Left Corners"
+        elif kernel_choice == "Isolated Pixel":
+            # This kernel finds single foreground pixels that are completely surrounded by background.
+            # The center is the "Hit" (1), and all its immediate neighbors are "Misses" (-1).
+            combined_kernel = np.array([
+                [-1, -1, -1],
+                [-1,  1, -1],
+                [-1, -1, -1]], dtype=np.int8)
+            caption_text = "Hit-or-Miss: Detecting Isolated Pixels"
+        else: # Line Ending (Right)
+            # This kernel finds the rightmost end of a horizontal line.
+            # It requires a foreground pixel (1) to its left and background pixels (-1)
+            # above, below, and to its right.
+            combined_kernel = np.array([
+                [-1, -1, -1],
+                [ 1,  1, -1],
+                [-1, -1, -1]], dtype=np.int8)
+            caption_text = "Hit-or-Miss: Detecting Right End of a Line"
 
         hit_or_miss_result = cv2.morphologyEx(binary_img, cv2.MORPH_HITMISS, combined_kernel)
 
-        st.image(hit_or_miss_result, caption="Hit-or-Miss Result (Detecting Top-Right Corners)", use_column_width=True)
+        st.image(hit_or_miss_result, caption=caption_text, use_column_width=True)
         st.info("The white pixels in the result mark the locations where the specific corner shape was found.")
 
-    st.success("**Key Takeaway:** The Hit-or-Miss transform is a precise shape detector in binary images, using a pair of structuring elements to match both the object's shape and its immediate background.")
+    st.markdown("""
+    ### Applications and Relationship to Other Operations
+    The Hit-or-Miss transform is more than just a standalone shape detector; it's a building block for other critical morphological algorithms.
+    - **Thinning:** Thinning is an operation that erodes away the boundary of a foreground object while preserving its overall shape and connectivity. It is performed by iteratively applying the Hit-or-Miss transform with a sequence of structuring elements that detect and remove boundary pixels, until no more pixels can be removed. This is used to compute the "skeleton" of an object.
+    - **Thickening:** The dual of thinning, thickening grows selected foreground pixels. It is also based on the Hit-or-Miss transform, but instead of removing the matched pixels, it sets them to the foreground color.
+    - **Pruning:** This is used to clean up skeletonized images by removing small, parasitic branches. This can be achieved by using Hit-or-Miss to find line endings, dilating the result to cover the small branch, and then subtracting this from the original skeleton.
+    - **Template Matching:** At its core, the operation is a form of binary template matching, finding exact instances of a pattern.
+    """)
+
+    st.success("**Key Takeaway:** The Hit-or-Miss transform is a highly specific shape detector for binary images. It uniquely uses a pair of structuring elements to match both the foreground (hit) and background (miss) simultaneously, making it the foundation for advanced morphological operations like thinning and pruning.")
 
 
 elif topic == "Color Spaces (HSI)":
@@ -217,15 +305,36 @@ elif topic == "Color Spaces (HSI)":
     Computers typically represent color using the **RGB (Red, Green, Blue)** model, which is an additive model well-suited for displays. However, the RGB model is not intuitive for human perception. We don't describe a color by its R, G, and B values; we describe it by its tint, shade, and brightness.
 
     The **HSI (Hue, Saturation, Intensity)** color model decouples the color information from the intensity (brightness) information, which aligns much better with how humans perceive color. This makes it extremely useful for many image processing tasks.
+
+    ### The Problem with the RGB Model
+    In the RGB model, color and brightness are highly correlated. For example, to make a color brighter, you need to increase the values of R, G, and B. To change the color, you need to change the *ratio* of R, G, and B. This entanglement makes seemingly simple tasks difficult. For instance, if you want to improve the contrast of a color image using histogram equalization, applying it to the R, G, and B channels separately will not only change the contrast but also drastically and unnaturally alter the colors. This is because the relative proportions of R, G, and B are changed independently, leading to a phenomenon known as "color shifting."
+
+    The HSI model solves this by providing an orthogonal representation of color and brightness, allowing us to manipulate one without affecting the other.
     """)
 
     st.subheader("Fundamental Description of HSI Components")
     st.markdown("""
-    - **Hue (H):** This represents the pure color itself (e.g., red, yellow, green, blue). It is measured as an angle from 0 to 360 degrees on a color wheel. Red is typically at 0°, Green at 120°, and Blue at 240°.
-    - **Saturation (S):** This represents the "purity" or "vibrancy" of the color. It indicates how much white light is mixed with the pure hue. A saturation of 1 means a pure, vivid color. A saturation of 0 means a shade of gray (achromatic).
-    - **Intensity (I):** This represents the brightness or luminance of the color. It is a measure of how light or dark the color is, ranging from black (0) to white (1). This component is decoupled from the color information.
+    Imagine a cylindrical or conical color space. The HSI components map to this space in a very intuitive way:
 
-    **Why is this useful?** By separating intensity from hue and saturation, we can perform processing on the brightness of an image without altering its color content. For example, applying histogram equalization to the 'I' channel of an HSI image will improve its contrast without changing its colors, which is not possible in the RGB space directly.
+    -   **Hue (H):** This represents the pure, dominant wavelength of the color (e.g., 'red', 'yellow', 'green', 'cyan'). It is measured as an angle around the central vertical axis of the color model, typically ranging from 0 to 360 degrees. By convention, Red is at 0°, Green is at 120°, and Blue is at 240°. The Hue channel of an image is a grayscale image where pixel intensity represents this angle.
+
+    -   **Saturation (S):** This represents the "purity" or "vibrancy" of the color. It is a measure of the degree to which a pure color is diluted by white light. Saturation is measured as the radial distance from the central axis of the color model, typically ranging from 0 to 1 (or 0 to 100%).
+        -   A saturation of 1 (or 100%) means the color is completely pure and undiluted (e.g., the most vivid red possible).
+        -   A saturation of 0 means the color is completely desaturated, resulting in a shade of gray. For any pixel with S=0, the Hue is undefined and irrelevant.
+
+    -   **Intensity (I):** Also known as Value (V) or Lightness (L) in similar models (HSV, HSL), this represents the brightness or luminance of the color. It is measured along the central vertical axis, ranging from 0 (black) to 1 (white). This component is completely decoupled from the color information (Hue and Saturation). The Intensity channel of a color image looks like a standard grayscale conversion of that image.
+
+    ### Why is this separation so useful in Image Processing?
+
+    By separating intensity from the chrominance (color) components, we can perform many processing tasks more effectively and intuitively:
+
+    1.  **Contrast Enhancement:** As mentioned, applying histogram equalization to the 'I' channel of an HSI image will improve its contrast across the entire image without changing the original colors. The H and S channels remain untouched.
+
+    2.  **Color Segmentation:** It is much easier to segment objects of a specific color in HSI space. For example, to find all "red" objects in an image, you don't need a complex rule like `R > threshold_r AND G < threshold_g AND B < threshold_b`. Instead, you can simply define a range for the Hue channel (e.g., pixels with Hue between 340° and 20°). You can further refine this by setting thresholds for Saturation (to avoid grayish reds) and Intensity (to avoid very dark or very bright spots). This is far more robust to changes in lighting conditions than RGB-based segmentation.
+
+    3.  **Color Manipulation:** Artists and designers use HSI-like models to intuitively adjust colors. Want to make the image more vibrant? Increase the Saturation channel. Want to change the color of an object from red to blue? Select the object and shift its Hue values.
+
+    4.  **Image Analysis:** The HSI model is valuable for analyzing scenes. For example, in computer vision for autonomous vehicles, the Hue channel can be very effective for identifying the color of traffic lights or road signs, regardless of whether it's a bright sunny day or a dim, overcast one (which mainly affects the Intensity channel).
     """)
 
     st.subheader("Visualization of HSI Components")
@@ -255,7 +364,7 @@ elif topic == "Color Spaces (HSI)":
         with col4:
             st.image(l, caption="Intensity/Lightness (I/L) Channel", use_column_width=True)
 
-        st.markdown("Notice how the **Intensity** channel looks like a grayscale version of the original image, while the **Hue** and **Saturation** channels capture the color information.")
+        st.markdown("Notice how the **Intensity** channel looks like a standard grayscale version of the original image. The **Hue** channel shows where the dominant colors are (e.g., different shades of gray representing different angles on the color wheel), and the **Saturation** channel is brightest in areas of pure, vibrant color and darkest in grayish or muted areas.")
 
     st.success("**Key Takeaway:** The HSI color model is a perception-based model that separates color information (Hue, Saturation) from brightness (Intensity), making it ideal for tasks where you want to modify image brightness without affecting its colors.")
 
@@ -263,13 +372,19 @@ elif topic == "Color Spaces (HSI)":
 elif topic == "Laplacian of Gaussian (LoG)":
     st.header("4. Laplacian of Gaussian (LoG)")
     st.markdown("""
-    The Laplacian of Gaussian (LoG) is a powerful edge detection operator. It combines two steps into one operation to find edges, particularly zero-crossings, which correspond to the locations of edges in an image.
+    The Laplacian of Gaussian (LoG) is a powerful and widely used edge detection operator. It is known as a "second-order" or "second-derivative" edge detector because it looks for **zero-crossings** in the second derivative of the image to find edges. This is in contrast to first-order detectors like the Sobel or Prewitt operators, which look for peaks (local maxima) in the first derivative (the gradient).
 
-    The two steps are:
-    1.  **Gaussian Smoothing:** First, the image is smoothed with a Gaussian filter. This is done to reduce noise, as the Laplacian operator is very sensitive to noise.
-    2.  **Laplacian Operator:** Second, the Laplacian operator is applied to the smoothed image. The Laplacian is a 2nd-order derivative operator that highlights regions of rapid intensity change.
+    ### The Two-Step Process: Taming the Laplacian
 
-    Edges in the LoG-filtered image are found at the **zero-crossings** – the points where the pixel values cross from positive to negative or vice-versa.
+    The LoG operator elegantly combines two distinct operations into a single, more robust one. To understand its brilliance, we must first look at the components.
+
+    1.  **The Laplacian Operator ($\nabla^2$):** The Laplacian is a second-derivative operator. In 2D, it is defined as $\nabla^2 f = \frac{\partial^2 f}{\partial x^2} + \frac{\partial^2 f}{\partial y^2}$. It is excellent at highlighting regions of rapid intensity change (like edges) and produces a double edge (one on each side of the original edge). However, it has a major weakness: **it is extremely sensitive to noise.** Because differentiation amplifies noise, applying the Laplacian directly to a noisy image often results in an output where the noise completely overwhelms the actual edge information.
+
+    2.  **The Gaussian Filter ($G$):** The Gaussian filter is a low-pass filter used for smoothing or blurring an image. Its primary purpose in this context is **noise reduction.** By pre-smoothing the image with a Gaussian filter, we can suppress the noise before it gets amplified by the Laplacian.
+
+    The LoG method combines these two steps. Because both Gaussian filtering and the Laplacian are linear operations, they are commutative. This means that instead of first filtering the image with a Gaussian and then applying the Laplacian (`∇²[G * f]`), we can first convolve the Gaussian function with the Laplacian operator to create a single new kernel (`[∇²G]`) and then convolve that kernel with the image (`[∇²G] * f`). This is computationally more efficient.
+
+    The final filtered image contains positive and negative values. The edges are located at the **zero-crossings** – the points where the pixel values transition from positive to negative or vice-versa.
     """)
 
     st.subheader("The 'Mexican Hat' Function")
@@ -291,13 +406,13 @@ elif topic == "Laplacian of Gaussian (LoG)":
     ''')
 
     st.error("""
-    **Why is there a negative sign in the LoG formula?**
+    **Why is there a negative sign in the LoG formula? A Deeper Look.**
 
-    The negative sign is included by convention to turn the central peak of the "Mexican Hat" positive.
+    The negative sign is included purely by **convention** to create a kernel that is more visually intuitive. Let's trace the logic:
     - The standard 2D Gaussian function has a positive peak at the center.
-    - The Laplacian operator, being a second derivative, measures the "concavity" of a function. At the peak of the Gaussian, the concavity is negative (it's curving downwards).
-    - Therefore, the raw Laplacian of a Gaussian results in a kernel with a negative value at its center and positive values in the surrounding ring.
-    - By **adding a negative sign** to the entire formula, we invert this, creating the familiar "Mexican Hat" shape with a **positive central peak and a negative surrounding ring**. This makes the kernel's visual representation more intuitive.
+    - The Laplacian operator measures the "concavity" of a function. At the very peak of the Gaussian bell curve, the function is maximally concave (curving downwards), so its second derivative is **negative**. In the surrounding "skirt" of the bell curve, the curvature becomes convex, so the second derivative is **positive**.
+    - Therefore, the raw Laplacian of a Gaussian, `∇²G`, naturally produces a kernel with a **negative value at its center** and a ring of positive values around it.
+    - To make the kernel's visual representation more intuitive and easier to work with, we multiply the entire function by -1. This inverts the kernel, creating the familiar "Mexican Hat" shape with a **positive central peak and a negative surrounding ring**. This has no effect on the location of the zero-crossings, which is what we ultimately care about for edge detection.
     """)
 
     st.subheader("Interactive Demo")
@@ -306,12 +421,22 @@ elif topic == "Laplacian of Gaussian (LoG)":
         st.image(gray_img, caption="Original Grayscale Image", use_column_width=True)
 
     with col2:
-        kernel_size = st.slider("Select Gaussian kernel size (odd)", 3, 15, 5, 2)
-        # Apply Gaussian blur
-        blurred_img = cv2.GaussianBlur(gray_img, (kernel_size, kernel_size), 0)
-        # Apply Laplacian
-        log_img = cv2.Laplacian(blurred_img, cv2.CV_64F)
-        # We take the absolute value for visualization, but zero-crossing detection is the proper way to find edges.
+        kernel_size = st.slider("Select Gaussian kernel size (odd)", 3, 21, 5, 2)
+        sigma = st.slider("Sigma (σ) of Gaussian", 0.1, 5.0, 1.4, 0.1)
+
+        st.markdown(f"""
+        The `kernel_size` and `sigma` (σ) are related. A larger sigma creates more smoothing, reducing more noise but potentially blurring finer edges. The kernel size should be large enough to properly represent the Gaussian function defined by sigma (a common rule of thumb is `kernel_size ≈ 6σ`).
+        """)
+
+        # Step 1: Apply Gaussian blur to reduce noise
+        blurred_img = cv2.GaussianBlur(gray_img, (kernel_size, kernel_size), sigma)
+
+        # Step 2: Apply the Laplacian operator. We use a 64-bit float format (CV_64F)
+        # to capture the positive and negative values around the zero-crossings.
+        log_img = cv2.Laplacian(blurred_img, cv2.CV_64F, ksize=kernel_size)
+
+        # For visualization purposes, we can take the absolute value. However, for true edge
+        # detection, one would implement an algorithm to find the zero-crossing contours.
         log_img_display = cv2.convertScaleAbs(log_img)
         st.image(log_img_display, caption=f"LoG Filtered Image (Kernel: {kernel_size}x{kernel_size})", use_column_width=True)
         st.info("The bright lines represent areas of high second-derivative, corresponding to edges.")
@@ -594,4 +719,3 @@ elif topic == "Geometric Mean Filter in Frequency Domain":
         st.image(geo_mean_img, caption=f"Geometric Mean Filtered (Freq. Domain, D0={d0})", use_column_width=True)
 
     st.success("**Key Takeaway:** The geometric mean filter can be implemented in the frequency domain by transforming the problem into an arithmetic mean (convolution) problem using logarithms. This involves a log-transform, frequency-domain low-pass filtering, and an inverse exponentiation step.")
-
